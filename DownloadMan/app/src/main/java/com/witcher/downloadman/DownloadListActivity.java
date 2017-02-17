@@ -31,7 +31,6 @@ public class DownloadListActivity extends AppCompatActivity {
     DownloadManager mgr;
     ListView lv;
     DownloadAdapter adapter;
-
     List<DownloadMission> list;
     Subscription subscription;
 
