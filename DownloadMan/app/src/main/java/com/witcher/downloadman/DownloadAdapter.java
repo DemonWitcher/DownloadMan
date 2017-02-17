@@ -82,9 +82,9 @@ public class DownloadAdapter extends BaseAdapter {
         holder.progressBar.setIndeterminate(mission.getState() == MissionState.CONNECTING);
         holder.progressBar.setMax((int) mission.getSize());
         holder.progressBar.setProgress((int) mission.getProgress());
-        if(mission.getState() == MissionState.PAUSE){
+        if(mission.getState() == MissionState.PAUSE||mission.getState() == MissionState.ERROR){
             holder.start.setText("开始");
-        }else {
+        }else{
             holder.start.setText("暂停");
         }
         holder.cancel.setOnClickListener(new View.OnClickListener() {
@@ -96,7 +96,7 @@ public class DownloadAdapter extends BaseAdapter {
         holder.start.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                if(mission.getState() == MissionState.PAUSE){
+                if(mission.getState() == MissionState.PAUSE||mission.getState() == MissionState.ERROR){
                     listener.start(position);
                 }else {
                     listener.pause(position);

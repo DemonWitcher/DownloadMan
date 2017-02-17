@@ -53,11 +53,7 @@ public class DownloadListActivity extends AppCompatActivity {
                     @Override
                     public List<DownloadMission> call(Long aLong) {
                         try {
-                            long time1 = System.currentTimeMillis();
-                            List<DownloadMission> list = mgr.getAllMission();
-                            long time2 = System.currentTimeMillis();
-                            L.i("getAllMission耗时:" + (time2 - time1));
-                            return list;
+                            return mgr.getAllMission();
                         } catch (RemoteException e) {
                             e.printStackTrace();
                             return null;
@@ -93,53 +89,38 @@ public class DownloadListActivity extends AppCompatActivity {
         adapter = new DownloadAdapter(list, this, new DownloadAdapter.ActionListener() {
             @Override
             public void start(final int index) {
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            long time1 = System.currentTimeMillis();
-                            mgr.startMission(list.get(index).getUrl());
-                            long time2 = System.currentTimeMillis();
-                            L.i("start耗时:" + (time2 - time1));
-                            L.i("开始了:" + index);
-                        } catch (RemoteException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }).start();
+                try {
+                    long time1 = System.currentTimeMillis();
+                    mgr.startMission(list.get(index).getUrl());
+                    long time2 = System.currentTimeMillis();
+                    L.i("start耗时:" + (time2 - time1));
+                    L.i("开始了:" + index);
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
             }
 
             @Override
             public void pause(final int index) {
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            L.i("暂停了:" + index);
-                            long time1 = System.currentTimeMillis();
-                            mgr.pauseMission(list.get(index).getUrl());
-                            long time2 = System.currentTimeMillis();
-                            L.i("pause耗时:" + (time2 - time1));
-                        } catch (RemoteException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }).start();
+                try {
+                    L.i("暂停了:" + index);
+                    long time1 = System.currentTimeMillis();
+                    mgr.pauseMission(list.get(index).getUrl());
+                    long time2 = System.currentTimeMillis();
+                    L.i("pause耗时:" + (time2 - time1));
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
             }
 
             @Override
             public void cancel(final int index) {
-                new Thread(new Runnable() {
-                    @Override
-                    public void run() {
-                        try {
-                            L.i("取消了:" + index);
-                            mgr.cancelMission(list.get(index).getUrl());
-                        } catch (RemoteException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                }).start();
+                try {
+                    L.i("取消了:" + index);
+                    mgr.cancelMission(list.get(index).getUrl());
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
             }
         });
         lv.setAdapter(adapter);
