@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.witcher.downloadmanlib">
+
+    <application>
+        <service
+            android:name="com.witcher.downloadmanlib.service.DownloadService"
+            android:process=":DownloadManager">
+            <intent-filter>
+                <action android:name="com.witcher.downloadmanlib.service.DownloadService"></action>
+            </intent-filter>
+        </service>
+    </application>
+
+</manifest>
