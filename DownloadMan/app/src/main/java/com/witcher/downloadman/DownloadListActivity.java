@@ -1,8 +1,8 @@
 package com.witcher.downloadman;
 
-import android.app.Activity;
 import android.os.Bundle;
 import android.os.RemoteException;
+import android.support.v7.app.AppCompatActivity;
 import android.view.View;
 import android.widget.ListView;
 import android.widget.Toast;
@@ -26,7 +26,7 @@ import rx.schedulers.Schedulers;
  * Created by witcher on 2017/2/13 0013.
  */
 
-public class DownloadListActivity extends Activity {
+public class DownloadListActivity extends AppCompatActivity {
 
     DownloadManager mgr;
     ListView lv;
