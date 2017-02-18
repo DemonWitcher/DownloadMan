@@ -17,9 +17,10 @@ import com.witcher.downloadmanlib.util.L;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import rx.Subscriber;
 import rx.Subscription;
@@ -33,11 +34,8 @@ import static com.witcher.downloadmanlib.entity.Constant.DownloadMan.MAX_DOWNLOA
 
 public class DownloadService extends Service {
 
-    private List<DownloadMission> mDownloadList;
+    private final AtomicInteger mIntDownloadingCount = new AtomicInteger();
     private List<DownloadMission> mWaitList;
-    private List<DownloadMission> mPauseList;
-    private List<DownloadMission> mErrorList;
-    private List<DownloadMission> mCompleteList;
     private Map<String, DownloadMission> mIndexMap;
 
 //    private Lock lock = new ReentrantLock();
@@ -52,43 +50,14 @@ public class DownloadService extends Service {
         mDownloadHelper = new DownloadHelper(this);
         mDBManager = DBManager2.getSingleton(this);
         mFileHelper = new FileHelper(this);
-        mDownloadList = new ArrayList<>(MAX_DOWNLOAD_NUMBER);
         mWaitList = new ArrayList<>();
-        mPauseList = new ArrayList<>();
-        mErrorList = new ArrayList<>();
-        mCompleteList = new ArrayList<>();
-        mIndexMap = new HashMap<>();
+        mIndexMap = new ConcurrentHashMap<>();
 
         List<DownloadMission> list = mDBManager.getAllMission();
         for (DownloadMission mission : list) {
             mIndexMap.put(mission.getUrl(), mission);
-            switch (mission.getState()) {
-                case MissionState.PAUSE: {
-                    mPauseList.add(mission);
-                }
-                break;
-                case MissionState.WAIT: {
-                    mWaitList.add(mission);
-                }
-                break;
-                case MissionState.DOWNLOADING: {
-                    // TODO: 2017/2/16 0016 这里没想好有任务处于正在下载中,APP关了,又启动了之后的业务逻辑
-                }
-                break;
-                case MissionState.COMPLETE: {
-                    mCompleteList.add(mission);
-                }
-                break;
-                case MissionState.ERROR: {
-                    mErrorList.remove(mission);
-                }
-                break;
-                case MissionState.CONNECTING: {
-                    mDownloadList.add(mission);
-                }
-                break;
-                default: {
-                }
+            if (mission.getState() == MissionState.WAIT) {
+                mWaitList.add(mission);
             }
         }
 
@@ -176,7 +145,6 @@ public class DownloadService extends Service {
         mDBManager.deleteMission(url);
         switch (mission.getState()) {
             case MissionState.PAUSE: {
-                mPauseList.remove(mission);
             }
             break;
             case MissionState.WAIT: {
@@ -185,7 +153,7 @@ public class DownloadService extends Service {
             break;
             case MissionState.DOWNLOADING: {
                 mission.pauseAllRange();
-                mDownloadList.remove(mission);
+                mIntDownloadingCount.getAndDecrement();
                 checkHaveMissionToStartDownload();
             }
             break;
@@ -194,7 +162,6 @@ public class DownloadService extends Service {
             }
             break;
             case MissionState.ERROR: {
-                mErrorList.remove(mission);
             }
             break;
             default: {
@@ -204,17 +171,18 @@ public class DownloadService extends Service {
     }
 
     private void pauseAllMission() {
-        for (DownloadMission mission : mDownloadList) {
-            mission.pauseAllRange();
-            mission.setState(MissionState.PAUSE);
-            mDBManager.updateMission(mission);
-            mPauseList.add(mission);
+        for (String url : mIndexMap.keySet()) {
+            DownloadMission mission = mIndexMap.get(url);
+            if (mission.getState() == MissionState.DOWNLOADING) {
+                mission.pauseAllRange();
+                mission.setState(MissionState.PAUSE);
+                mDBManager.updateMission(mission);
+            }
         }
-        mDownloadList.clear();
+        mIntDownloadingCount.set(0);
         for (DownloadMission mission : mWaitList) {
             mission.setState(MissionState.PAUSE);
             mDBManager.updateMission(mission);
-            mPauseList.add(mission);
         }
         mWaitList.clear();
     }
@@ -222,11 +190,6 @@ public class DownloadService extends Service {
     //一个继续下载指令 有可能来自于暂停中任务,也有可能来自于错误中任务
     private void continueMission(String url) {
         DownloadMission mission = mIndexMap.get(url);
-        if (mission.getState() == MissionState.PAUSE) {
-            mPauseList.remove(mission);
-        } else if (mission.getState() == MissionState.ERROR) {
-            mErrorList.remove(mission);
-        }
         mWaitList.add(mission);
         mission.setState(MissionState.WAIT);
         mDBManager.updateMission(mission);
@@ -238,25 +201,22 @@ public class DownloadService extends Service {
         if (mission.getState() == MissionState.DOWNLOADING) {
             L.i("暂停了正在下载中的任务:" + mission.getName());
             mission.pauseAllRange();
-            mDownloadList.remove(mission);
+            mIntDownloadingCount.getAndDecrement();
         } else if (mission.getState() == MissionState.WAIT) {
             L.i("暂停了正在等待中的任务:" + mission.getName());
             mWaitList.remove(mission);
         }
         mission.setState(MissionState.PAUSE);
         mDBManager.updateMission(mission);
-        mPauseList.add(mission);
         checkHaveMissionToStartDownload();
     }
 
     private void cancelAll() {
         mDBManager.deleteAll();
         mFileHelper.deleteAll();
-        mDownloadList.clear();
-        mPauseList.clear();
+        mIntDownloadingCount.set(0);
         mWaitList.clear();
         mIndexMap.clear();
-        mErrorList.clear();
     }
 
     private int addMission(String name, String url) {
@@ -278,10 +238,7 @@ public class DownloadService extends Service {
 
     private void startDownload(final DownloadMission mission) {
         mission.setState(MissionState.CONNECTING);
-        mDownloadList.add(mission);
-        if (mission.getState() == MissionState.ERROR) {
-            mErrorList.remove(mission);
-        }
+        mIntDownloadingCount.getAndIncrement();
         Subscription sub = mDownloadHelper.startDownload(mission)
                 .subscribe(new Subscriber<DownloadMission>() {
                     @Override
@@ -296,8 +253,7 @@ public class DownloadService extends Service {
                     public void onCompleted() {
                         L.i("onCompleted");
                         mission.setState(MissionState.COMPLETE);
-                        mDownloadList.remove(mission);
-                        mCompleteList.add(mission);
+                        mIntDownloadingCount.getAndDecrement();
                         mDBManager.updateMission(mission);
                         checkHaveMissionToStartDownload();
                     }
@@ -306,8 +262,7 @@ public class DownloadService extends Service {
                     public void onError(Throwable e) {
                         L.i("onError:" + e.getMessage() + ",错误任务:" + mission.getName());
                         mission.setState(MissionState.ERROR);
-                        mDownloadList.remove(mission);
-                        mErrorList.add(mission);
+                        mIntDownloadingCount.getAndDecrement();
                         mDBManager.updateMission(mission);
                         e.printStackTrace();
                     }
@@ -338,7 +293,7 @@ public class DownloadService extends Service {
     }
 
     private boolean checkDownloadingIsFull() {
-        return mDownloadList.size() == MAX_DOWNLOAD_NUMBER;
+        return mIntDownloadingCount.get() == MAX_DOWNLOAD_NUMBER;
     }
 
     private boolean checkMissionExist(String url) {
