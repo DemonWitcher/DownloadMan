@@ -4,7 +4,7 @@ package com.witcher.downloadmanlib.helper;
 import android.content.Context;
 import android.util.Log;
 
-import com.witcher.downloadmanlib.db.DBManager2;
+import com.witcher.downloadmanlib.db.DBManager;
 import com.witcher.downloadmanlib.entity.DownloadMission;
 import com.witcher.downloadmanlib.entity.Range;
 import com.witcher.downloadmanlib.util.L;
@@ -17,6 +17,7 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import okhttp3.ResponseBody;
 import retrofit2.Response;
@@ -40,18 +41,18 @@ import static com.witcher.downloadmanlib.entity.Constant.DownloadMan.TAG;
 public class DownloadHelper {
 
     private DownloadAPI mDownloadAPI;
-    private DBManager2 mDbManager;
+    private DBManager mDbManager;
     private FileHelper mFileHelper;
     private Context mContext;
 
     public DownloadHelper(Context context) {
         this.mContext = context;
-        mDbManager = DBManager2.getSingleton(mContext);
+        mDbManager = DBManager.getSingleton(mContext);
         mDownloadAPI = RetrofitProvider.getInstance().create(DownloadAPI.class);
-        mFileHelper = new FileHelper(mContext);
+        mFileHelper = new FileHelper();
     }
 
-    public Observable<DownloadMission> startDownload(final DownloadMission mission) {
+    public Observable<Range> startDownload(final DownloadMission mission) {
         L.i("startDownload_url:" + mission.getUrl());
         L.i("startDownload_name:" + mission.getName());
         mFileHelper.createDownloadDirs();
@@ -63,9 +64,9 @@ public class DownloadHelper {
             return mDownloadAPI.getHttpHeader(mission.getUrl())
                     .subscribeOn(Schedulers.io())
                     .observeOn(Schedulers.io())
-                    .flatMap(new Func1<Response<Void>, Observable<DownloadMission>>() {
+                    .flatMap(new Func1<Response<Void>, Observable<Range>>() {
                         @Override
-                        public Observable<DownloadMission> call(Response<Void> voidResponse) {
+                        public Observable<Range> call(Response<Void> voidResponse) {
                             mission.setSize(Util.contentLength(voidResponse));
                             createRange(mission);
                             return launchDownload(mission);
@@ -80,8 +81,8 @@ public class DownloadHelper {
 
     }
 
-    private Observable<DownloadMission> launchDownload(DownloadMission mission) {
-        List<Observable<DownloadMission>> list = new ArrayList<>(DOWNLOAD_RANGE);
+    private Observable<Range> launchDownload(DownloadMission mission) {
+        List<Observable<Range>> list = new ArrayList<>(DOWNLOAD_RANGE);
         for (int i = 0; i < DOWNLOAD_RANGE; ++i) {
             list.add(downloadObservable(mission.getRanges().get(i)));
         }
@@ -106,24 +107,29 @@ public class DownloadHelper {
         mission.setRanges(list);
     }
 
-    private Observable<DownloadMission> downloadObservable(final Range range) {
+    private Observable<Range> downloadObservable(final Range range) {
         String strRange = "bytes=" + (range.getProgress() + range.start) + "-" + range.end;
         L.i("start a download request:" + strRange);
         return mDownloadAPI.download(strRange, range.getUrl())
                 .subscribeOn(Schedulers.io())
                 .observeOn(Schedulers.io())
-                .flatMap(new Func1<Response<ResponseBody>, Observable<DownloadMission>>() {
+                .flatMap(new Func1<Response<ResponseBody>, Observable<Range>>() {
                     @Override
-                    public Observable<DownloadMission> call(final Response<ResponseBody> responseBodyResponse) {
+                    public Observable<Range> call(final Response<ResponseBody> responseBodyResponse) {
                         return progressObservable(responseBodyResponse, range);
+                    }
+                }).retry(new Func2<Integer, Throwable, Boolean>() {
+                    @Override
+                    public Boolean call(Integer integer, Throwable throwable) {
+                        return retry(integer, throwable);
                     }
                 });
     }
 
-    private Observable<DownloadMission> progressObservable(final Response<ResponseBody> responseBodyResponse, final Range range) {
-        return Observable.create(new Observable.OnSubscribe<DownloadMission>() {
+    private Observable<Range> progressObservable(final Response<ResponseBody> responseBodyResponse, final Range range) {
+        return Observable.create(new Observable.OnSubscribe<Range>() {
             @Override
-            public void call(Subscriber<? super DownloadMission> subscriber) {
+            public void call(Subscriber<? super Range> subscriber) {
                 if (responseBodyResponse.code() == 200 || responseBodyResponse.code() == 206) {
                     mFileHelper.writeResponseBodyToDisk(subscriber, responseBodyResponse, range);
                 } else {
@@ -133,12 +139,7 @@ public class DownloadHelper {
         }).subscribeOn(Schedulers.io())
                 .observeOn(Schedulers.io())
                 .onBackpressureLatest()
-                .retry(new Func2<Integer, Throwable, Boolean>() {
-                    @Override
-                    public Boolean call(Integer integer, Throwable throwable) {
-                        return retry(integer, throwable);
-                    }
-                });
+                .sample(1, TimeUnit.SECONDS);
     }
 
     private Boolean retry(Integer integer, Throwable throwable) {

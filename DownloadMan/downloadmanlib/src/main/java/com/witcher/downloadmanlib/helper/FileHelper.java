@@ -1,10 +1,7 @@
 package com.witcher.downloadmanlib.helper;
 
-import android.content.Context;
 import android.os.Environment;
 
-import com.witcher.downloadmanlib.db.DBManager2;
-import com.witcher.downloadmanlib.entity.DownloadMission;
 import com.witcher.downloadmanlib.entity.Range;
 import com.witcher.downloadmanlib.util.L;
 
@@ -28,15 +25,7 @@ import static java.nio.channels.FileChannel.MapMode.READ_WRITE;
 
 public class FileHelper {
 
-    private Context mContext;
-    private DBManager2 mDbManager;
-
     private static final int BUFFER_SIZE = 32*1024;
-
-    public FileHelper(Context context) {
-        this.mContext = context;
-        mDbManager = DBManager2.getSingleton(mContext);
-    }
 
     public void createDownloadDirs() {
         mkdirs(getDownloadPath());
@@ -80,7 +69,7 @@ public class FileHelper {
         }
     }
 
-    public boolean writeResponseBodyToDisk(Subscriber<? super DownloadMission> sub, Response<ResponseBody> responseBodyResponse, Range range) {
+    public boolean writeResponseBodyToDisk(Subscriber<? super Range> sub, Response<ResponseBody> responseBodyResponse, Range range) {
         L.i("writeResponseBodyToDisk");
         try {
             RandomAccessFile raf = new RandomAccessFile(getDownloadPath() + File.separator + range.getName(), "rws");
@@ -105,9 +94,7 @@ public class FileHelper {
                     saveBuffer.put(buffer, 0, readLen);
                     progress += readLen;
                     range.progress = progress;
-//                    L.i("progress:"+progress);
-                    mDbManager.updateRange(range);
-//                    sub.onNext(mission);
+                    sub.onNext(range);
                 }
                 sub.onCompleted();
                 return true;

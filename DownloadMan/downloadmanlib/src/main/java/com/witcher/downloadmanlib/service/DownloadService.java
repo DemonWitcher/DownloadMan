@@ -6,11 +6,12 @@ import android.os.IBinder;
 import android.os.RemoteException;
 import android.support.annotation.Nullable;
 
-import com.witcher.downloadmanlib.db.DBManager2;
+import com.witcher.downloadmanlib.db.DBManager;
 import com.witcher.downloadmanlib.entity.Constant;
 import com.witcher.downloadmanlib.entity.DownloadMission;
 import com.witcher.downloadmanlib.entity.IDownloadService;
 import com.witcher.downloadmanlib.entity.MissionState;
+import com.witcher.downloadmanlib.entity.Range;
 import com.witcher.downloadmanlib.helper.DownloadHelper;
 import com.witcher.downloadmanlib.helper.FileHelper;
 import com.witcher.downloadmanlib.util.L;
@@ -41,15 +42,15 @@ public class DownloadService extends Service {
 //    private Lock lock = new ReentrantLock();
 
     private DownloadHelper mDownloadHelper;
-    private DBManager2 mDBManager;
+    private DBManager mDBManager;
     private FileHelper mFileHelper;
 
     @Nullable
     @Override
     public IBinder onBind(Intent intent) {
         mDownloadHelper = new DownloadHelper(this);
-        mDBManager = DBManager2.getSingleton(this);
-        mFileHelper = new FileHelper(this);
+        mDBManager = DBManager.getSingleton(this);
+        mFileHelper = new FileHelper();
         mWaitList = new ArrayList<>();
         mIndexMap = new ConcurrentHashMap<>();
 
@@ -140,9 +141,7 @@ public class DownloadService extends Service {
     }
 
     private void cancelMission(String url) {
-        DownloadMission mission = mIndexMap.get(url);
-        mFileHelper.deleteByName(mission.getName());
-        mDBManager.deleteMission(url);
+        DownloadMission mission = mIndexMap.remove(url);
         switch (mission.getState()) {
             case MissionState.PAUSE: {
             }
@@ -167,7 +166,8 @@ public class DownloadService extends Service {
             default: {
             }
         }
-        mIndexMap.remove(mission);
+        mFileHelper.deleteByName(mission.getName());
+        mDBManager.deleteMission(url);
     }
 
     private void pauseAllMission() {
@@ -240,7 +240,7 @@ public class DownloadService extends Service {
         mission.setState(MissionState.CONNECTING);
         mIntDownloadingCount.getAndIncrement();
         Subscription sub = mDownloadHelper.startDownload(mission)
-                .subscribe(new Subscriber<DownloadMission>() {
+                .subscribe(new Subscriber<Range>() {
                     @Override
                     public void onStart() {
                         super.onStart();
@@ -268,8 +268,8 @@ public class DownloadService extends Service {
                     }
 
                     @Override
-                    public void onNext(DownloadMission o) {
-                        L.i("onNext");
+                    public void onNext(Range range) {
+                        mDBManager.updateRange(range);
                     }
                 });
         mission.setSubscription(sub);

@@ -12,27 +12,27 @@ import java.util.List;
  * Created by witcher on 2017/2/14 0014.
  */
 
-public class DBManager2 {
+public class DBManager {
 
     private DaoMaster.DevOpenHelper mHelper;
     private SQLiteDatabase mDb;
     private DaoMaster mDaoMaster;
     private DaoSession mDaoSession;
     private Context mContext;
-    private static DBManager2 singleton;
+    private static DBManager singleton;
 
-    public static DBManager2 getSingleton(Context context) {
+    public static DBManager getSingleton(Context context) {
         if (singleton == null) {
-            synchronized (DBManager2.class) {
+            synchronized (DBManager.class) {
                 if (singleton == null) {
-                    singleton = new DBManager2(context);
+                    singleton = new DBManager(context);
                 }
             }
         }
         return singleton;
     }
 
-    private DBManager2(Context context) {
+    private DBManager(Context context) {
         this.mContext = context;
         setDatabase();
     }
