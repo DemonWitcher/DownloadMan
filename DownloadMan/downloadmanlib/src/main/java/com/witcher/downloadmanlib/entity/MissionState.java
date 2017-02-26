@@ -11,4 +11,5 @@ public class MissionState {
     public static final int COMPLETE = 0x08;
     public static final int ERROR = 0x10;
     public static final int CONNECTING = 0x16;
+    public static final int CANCEL = 0x18;
 }
