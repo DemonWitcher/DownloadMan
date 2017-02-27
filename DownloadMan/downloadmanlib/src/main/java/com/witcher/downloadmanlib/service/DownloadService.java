@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.support.annotation.Nullable;
+import android.util.Log;
 
 import com.witcher.downloadmanlib.db.DBManager;
 import com.witcher.downloadmanlib.entity.Constant;
@@ -23,6 +24,7 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import rx.Subscriber;
@@ -252,6 +254,7 @@ public class DownloadService extends Service {
         mission.setState(MissionState.CONNECTING);
         mIntDownloadingCount.getAndIncrement();
         Subscription sub = mDownloadHelper.startDownload(mission)
+                .sample(2000, TimeUnit.MILLISECONDS)
                 .subscribe(new Subscriber<Range>() {
                     @Override
                     public void onStart() {
@@ -273,6 +276,7 @@ public class DownloadService extends Service {
                     @Override
                     public void onError(Throwable e) {
                         L.i("onError:" + e.getMessage() + ",错误任务:" + mission.getName());
+                        L.i(Log.getStackTraceString(e));
                         mission.setState(MissionState.ERROR);
                         mIntDownloadingCount.getAndDecrement();
                         mDBManager.updateMission(mission);

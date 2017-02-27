@@ -10,6 +10,7 @@ import android.widget.Toast;
 import com.witcher.downloadmanlib.entity.DownloadMission;
 import com.witcher.downloadmanlib.manager.DownloadManager;
 import com.witcher.downloadmanlib.util.L;
+import com.witcher.downloadmanlib.util.Util;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,8 +39,8 @@ public class DownloadListActivity extends AppCompatActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_download_list);
-        initData();
         initView();
+        initData();
     }
 
     private void initData() {
@@ -134,6 +135,17 @@ public class DownloadListActivity extends AppCompatActivity {
                     e.printStackTrace();
                 }
                 Toast.makeText(DownloadListActivity.this, "清除成功", Toast.LENGTH_SHORT).show();
+            }
+        });
+
+        findViewById(R.id.bt3).setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    Util.printList(mgr.getAllMission());
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
             }
         });
 

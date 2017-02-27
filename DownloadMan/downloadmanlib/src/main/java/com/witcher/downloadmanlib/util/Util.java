@@ -91,6 +91,9 @@ public class Util {
     }
 
     public static void printList(List<DownloadMission> list){
+        if(list == null){
+            return;
+        }
         for(DownloadMission mission:list){
             L.i(mission.toString());
         }

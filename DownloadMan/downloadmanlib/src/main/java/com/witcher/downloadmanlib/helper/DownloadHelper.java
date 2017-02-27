@@ -17,7 +17,6 @@ import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 
 import okhttp3.ResponseBody;
 import retrofit2.Response;
@@ -84,7 +83,10 @@ public class DownloadHelper {
     private Observable<Range> launchDownload(DownloadMission mission) {
         List<Observable<Range>> list = new ArrayList<>(DOWNLOAD_RANGE);
         for (int i = 0; i < DOWNLOAD_RANGE; ++i) {
-            list.add(downloadObservable(mission.getRanges().get(i)));
+            Range range = mission.getRanges().get(i);
+            if(range.progress<range.size){
+                list.add(downloadObservable(range));
+            }
         }
         return Observable.merge(list);
     }
@@ -138,8 +140,7 @@ public class DownloadHelper {
             }
         }).subscribeOn(Schedulers.io())
                 .observeOn(Schedulers.io())
-                .onBackpressureLatest()
-                .sample(1, TimeUnit.SECONDS);
+                .onBackpressureLatest();
     }
 
     private Boolean retry(Integer integer, Throwable throwable) {
