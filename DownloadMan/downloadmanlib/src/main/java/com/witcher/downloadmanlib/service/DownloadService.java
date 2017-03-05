@@ -17,6 +17,8 @@ import com.witcher.downloadmanlib.helper.DownloadHelper;
 import com.witcher.downloadmanlib.helper.FileHelper;
 import com.witcher.downloadmanlib.util.L;
 
+import java.io.InterruptedIOException;
+import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -24,11 +26,13 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import rx.Subscriber;
-import rx.Subscription;
+import io.reactivex.Observer;
+import io.reactivex.disposables.Disposable;
+import io.reactivex.functions.Consumer;
+import io.reactivex.plugins.RxJavaPlugins;
+import io.reactivex.schedulers.Schedulers;
 
 import static com.witcher.downloadmanlib.entity.Constant.DownloadMan.MAX_DOWNLOAD_NUMBER;
 
@@ -39,14 +43,29 @@ import static com.witcher.downloadmanlib.entity.Constant.DownloadMan.MAX_DOWNLOA
 
 public class DownloadService extends Service {
 
-    private final AtomicInteger mIntDownloadingCount = new AtomicInteger(0);
+    static {
+        RxJavaPlugins.setErrorHandler(new Consumer<Throwable>() {
+            @Override
+            public void accept(Throwable throwable) throws Exception {
+                if (throwable instanceof InterruptedException) {
+                    L.i("Thread interrupted");
+                } else if (throwable instanceof InterruptedIOException) {
+                    L.i("Io interrupted");
+                } else if (throwable instanceof SocketException) {
+                    L.i("Socket error");
+                }
+            }
+        });
+    }
+
+    private final AtomicInteger mIntDownloadingCount = new AtomicInteger();
     private Queue<DownloadMission> mWaitList;
     private Map<String, DownloadMission> mIndexMap;
 
     private DownloadHelper mDownloadHelper;
     private DBManager mDBManager;
     private FileHelper mFileHelper;
-    private Looper mLooper;
+//    private Looper mLooper;
 
     @Nullable
     @Override
@@ -65,8 +84,8 @@ public class DownloadService extends Service {
             }
         }
 
-        mLooper = new Looper();
-        mLooper.loop();
+//        mLooper = new Looper();
+//        mLooper.loop();
         return binder;
     }
 
@@ -74,7 +93,7 @@ public class DownloadService extends Service {
     public boolean onUnbind(Intent intent) {
         // TODO: 2017/2/16 0016 业务逻辑未想好,暂时全部暂停
         pauseAllMission();
-        mLooper.interrupt();
+//        mLooper.interrupt();
         L.i("onUnbind");
         return super.onUnbind(intent);
     }
@@ -147,7 +166,7 @@ public class DownloadService extends Service {
         //把全部暂停与错误任务置为等待中
         for (String url : mIndexMap.keySet()) {
             DownloadMission mission = mIndexMap.get(url);
-            if (mission.getState() == (MissionState.PAUSE|MissionState.ERROR)) {
+            if (mission.getState() == (MissionState.PAUSE | MissionState.ERROR)) {
                 mission.setState(MissionState.WAIT);
                 mWaitList.add(mission);
                 mDBManager.updateMission(mission);
@@ -168,7 +187,7 @@ public class DownloadService extends Service {
             case MissionState.DOWNLOADING: {
                 mission.pauseAllRange();
                 mIntDownloadingCount.getAndDecrement();
-//                checkHaveMissionToStartDownload();
+                checkHaveMissionToStartDownload();
             }
             break;
             case MissionState.COMPLETE: {
@@ -193,7 +212,7 @@ public class DownloadService extends Service {
                 mission.setState(MissionState.PAUSE);
                 mDBManager.updateMission(mission);
                 mIntDownloadingCount.getAndDecrement();
-            }else if(mission.getState() == MissionState.WAIT){
+            } else if (mission.getState() == MissionState.WAIT) {
                 mission.setState(MissionState.PAUSE);
                 mDBManager.updateMission(mission);
             }
@@ -207,7 +226,7 @@ public class DownloadService extends Service {
         mWaitList.add(mission);
         mission.setState(MissionState.WAIT);
         mDBManager.updateMission(mission);
-//        checkHaveMissionToStartDownload();
+        checkHaveMissionToStartDownload();
     }
 
     private void pauseMission(String url) {
@@ -222,7 +241,7 @@ public class DownloadService extends Service {
         }
         mission.setState(MissionState.PAUSE);
         mDBManager.updateMission(mission);
-//        checkHaveMissionToStartDownload();
+        checkHaveMissionToStartDownload();
     }
 
     private void cancelAll() {
@@ -246,31 +265,27 @@ public class DownloadService extends Service {
         mDBManager.addMission(mission);
         mIndexMap.put(url, mission);
         mWaitList.add(mission);
-//        checkHaveMissionToStartDownload();
+        checkHaveMissionToStartDownload();
         return Constant.AddMission.SUCCESS;
     }
 
     private void startDownload(final DownloadMission mission) {
         mission.setState(MissionState.CONNECTING);
         mIntDownloadingCount.getAndIncrement();
-        Subscription sub = mDownloadHelper.startDownload(mission)
-                .sample(2000, TimeUnit.MILLISECONDS)
-                .subscribe(new Subscriber<Range>() {
+        mDownloadHelper.startDownload(mission)
+                .unsubscribeOn(Schedulers.computation())
+                .subscribe(new Observer<Range>() {
                     @Override
-                    public void onStart() {
-                        super.onStart();
-                        L.i("onStart");
+                    public void onSubscribe(Disposable d) {
+                        L.i("onSubscribe");
                         mission.setState(MissionState.DOWNLOADING);
                         mDBManager.updateMission(mission);
+                        mission.setDisposable(d);
                     }
 
                     @Override
-                    public void onCompleted() {
-                        L.i("onCompleted");
-                        mission.setState(MissionState.COMPLETE);
-                        mIntDownloadingCount.getAndDecrement();
-                        mDBManager.updateMission(mission);
-//                        checkHaveMissionToStartDownload();
+                    public void onNext(Range range) {
+                        mDBManager.updateRange(range);
                     }
 
                     @Override
@@ -284,29 +299,29 @@ public class DownloadService extends Service {
                     }
 
                     @Override
-                    public void onNext(Range range) {
-                        mDBManager.updateRange(range);
+                    public void onComplete() {
+                        L.i("onCompleted");
+                        mission.setState(MissionState.COMPLETE);
+                        mIntDownloadingCount.getAndDecrement();
+                        mDBManager.updateMission(mission);
+                        checkHaveMissionToStartDownload();
                     }
                 });
-        mission.setSubscription(sub);
     }
 
-//    private void checkHaveMissionToStartDownload() {
-//        new Thread(new Runnable() {
-//            @Override
-//            public void run() {
-//                while (!checkDownloadingIsFull()) {
-//                    if (mWaitList.size() != 0) {
-//                        DownloadMission mission = mWaitList.get(0);
-//                        mWaitList.remove(0);
-//                        startDownload(mission);
-//                    } else {
-//                        break;
-//                    }
-//                }
-//            }
-//        }).start();
-//    }
+    private void checkHaveMissionToStartDownload() {
+        while (!checkDownloadingIsFull()) {
+            if (mWaitList.size() != 0) {
+                DownloadMission mission = mWaitList.poll();
+                if (mission.getState() != MissionState.WAIT) {
+                    continue;
+                }
+                startDownload(mission);
+            } else {
+                break;
+            }
+        }
+    }
 
     private boolean checkDownloadingIsFull() {
         return mIntDownloadingCount.get() == MAX_DOWNLOAD_NUMBER;
@@ -316,32 +331,34 @@ public class DownloadService extends Service {
         return mIndexMap.containsKey(url);
     }
 
-    private class Looper extends Thread {
-
-        Looper() {
-            super(new Runnable() {
-                @Override
-                public void run() {
-                    while (!Thread.currentThread().isInterrupted()) {
-                        if (checkDownloadingIsFull()) {
-                            continue;
-                        }
-                        if (mWaitList.size() == 0) {
-                            continue;
-                        }
-                        DownloadMission mission = mWaitList.poll();
-                        if (mission.getState() != MissionState.WAIT) {
-                            continue;
-                        }
-                        startDownload(mission);
-                    }
-                }
-            });
-        }
-
-        private void loop() {
-            this.start();
-        }
-    }
+//    private class Looper extends Thread {
+//
+//        Looper() {
+//            super(new Runnable() {
+//                @Override
+//                public void run() {
+//                    while (!Thread.currentThread().isInterrupted()) {
+//                        if (checkDownloadingIsFull()) {
+//                            continue;
+//                        }
+//                        if (mWaitList.size() == 0) {
+//                            continue;
+//                        }
+//                        DownloadMission mission = mWaitList.poll();
+//                        if (mission.getState() != MissionState.WAIT) {
+//                            continue;
+//                        }
+//                        mission.setState(MissionState.CONNECTING);
+//                        mIntDownloadingCount.getAndIncrement();
+//                        startDownload(mission);
+//                    }
+//                }
+//            });
+//        }
+//
+//        private void loop() {
+//            this.start();
+//        }
+//    }
 
 }

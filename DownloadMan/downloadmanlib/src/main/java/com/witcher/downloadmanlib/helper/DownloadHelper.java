@@ -4,11 +4,14 @@ package com.witcher.downloadmanlib.helper;
 import android.content.Context;
 import android.util.Log;
 
+import com.jakewharton.retrofit2.adapter.rxjava2.HttpException;
 import com.witcher.downloadmanlib.db.DBManager;
 import com.witcher.downloadmanlib.entity.DownloadMission;
 import com.witcher.downloadmanlib.entity.Range;
 import com.witcher.downloadmanlib.util.L;
 import com.witcher.downloadmanlib.util.Util;
+
+import org.reactivestreams.Publisher;
 
 import java.net.ConnectException;
 import java.net.ProtocolException;
@@ -18,15 +21,18 @@ import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.reactivex.BackpressureStrategy;
+import io.reactivex.Flowable;
+import io.reactivex.FlowableEmitter;
+import io.reactivex.FlowableOnSubscribe;
+import io.reactivex.Observable;
+import io.reactivex.annotations.NonNull;
+import io.reactivex.exceptions.CompositeException;
+import io.reactivex.functions.BiPredicate;
+import io.reactivex.functions.Function;
+import io.reactivex.schedulers.Schedulers;
 import okhttp3.ResponseBody;
 import retrofit2.Response;
-import retrofit2.adapter.rxjava.HttpException;
-import rx.Observable;
-import rx.Subscriber;
-import rx.exceptions.CompositeException;
-import rx.functions.Func1;
-import rx.functions.Func2;
-import rx.schedulers.Schedulers;
 
 import static android.text.TextUtils.concat;
 import static com.witcher.downloadmanlib.entity.Constant.DownloadMan.DOWNLOAD_RANGE;
@@ -58,37 +64,39 @@ public class DownloadHelper {
         if (mDbManager.haveMission(mission.getUrl()) && mFileHelper.downloadFileExists(mission.getName())) {
             //这里查出所有range赋给mission
             mission.setRanges(mDbManager.getRangeByUrl(mission.getUrl()));
-            return launchDownload(mission);
+            return launchDownload(mission).toObservable();
         } else {
             return mDownloadAPI.getHttpHeader(mission.getUrl())
                     .subscribeOn(Schedulers.io())
                     .observeOn(Schedulers.io())
-                    .flatMap(new Func1<Response<Void>, Observable<Range>>() {
+                    .unsubscribeOn(Schedulers.computation())
+                    .flatMap(new Function<Response<Void>, Publisher<Range>>() {
                         @Override
-                        public Observable<Range> call(Response<Void> voidResponse) {
+                        public Publisher<Range> apply(@NonNull Response<Void> voidResponse) throws Exception {
                             mission.setSize(Util.contentLength(voidResponse));
                             createRange(mission);
                             return launchDownload(mission);
                         }
-                    }).retry(new Func2<Integer, Throwable, Boolean>() {
+                    }).retry(new BiPredicate<Integer, Throwable>() {
                         @Override
-                        public Boolean call(Integer integer, Throwable throwable) {
+                        public boolean test(@NonNull Integer integer, @NonNull Throwable throwable) throws Exception {
                             return retry(integer, throwable);
                         }
-                    });
+                    }).toObservable();
         }
 
     }
 
-    private Observable<Range> launchDownload(DownloadMission mission) {
-        List<Observable<Range>> list = new ArrayList<>(DOWNLOAD_RANGE);
+    private Flowable<Range> launchDownload(DownloadMission mission) {
+        List<Publisher<Range>> list = new ArrayList<>(DOWNLOAD_RANGE);
         for (int i = 0; i < DOWNLOAD_RANGE; ++i) {
             Range range = mission.getRanges().get(i);
-            if(range.progress<range.size){
+            if (range.progress < range.size) {
                 list.add(downloadObservable(range));
             }
         }
-        return Observable.merge(list);
+        return Flowable.merge(list)
+                .unsubscribeOn(Schedulers.computation());
     }
 
     private void createRange(DownloadMission mission) {
@@ -109,38 +117,41 @@ public class DownloadHelper {
         mission.setRanges(list);
     }
 
-    private Observable<Range> downloadObservable(final Range range) {
+    private Flowable<Range> downloadObservable(final Range range) {
         String strRange = "bytes=" + (range.getProgress() + range.start) + "-" + range.end;
         L.i("start a download request:" + strRange);
         return mDownloadAPI.download(strRange, range.getUrl())
                 .subscribeOn(Schedulers.io())
                 .observeOn(Schedulers.io())
-                .flatMap(new Func1<Response<ResponseBody>, Observable<Range>>() {
+                .unsubscribeOn(Schedulers.computation())
+                .flatMap(new Function<Response<ResponseBody>, Flowable<Range>>() {
                     @Override
-                    public Observable<Range> call(final Response<ResponseBody> responseBodyResponse) {
+                    public Flowable<Range> apply(@NonNull Response<ResponseBody> responseBodyResponse) throws Exception {
                         return progressObservable(responseBodyResponse, range);
                     }
-                }).retry(new Func2<Integer, Throwable, Boolean>() {
+                })
+                .unsubscribeOn(Schedulers.computation())
+                .retry(new BiPredicate<Integer, Throwable>() {
                     @Override
-                    public Boolean call(Integer integer, Throwable throwable) {
+                    public boolean test(@NonNull Integer integer, @NonNull Throwable throwable) throws Exception {
                         return retry(integer, throwable);
                     }
                 });
     }
-
-    private Observable<Range> progressObservable(final Response<ResponseBody> responseBodyResponse, final Range range) {
-        return Observable.create(new Observable.OnSubscribe<Range>() {
+    private Flowable<Range> progressObservable(final Response<ResponseBody> responseBodyResponse, final Range range) {
+        return Flowable.create(new FlowableOnSubscribe<Range>() {
             @Override
-            public void call(Subscriber<? super Range> subscriber) {
+            public void subscribe(FlowableEmitter<Range> emitter) throws Exception {
                 if (responseBodyResponse.code() == 200 || responseBodyResponse.code() == 206) {
-                    mFileHelper.writeResponseBodyToDisk(subscriber, responseBodyResponse, range);
+                    mFileHelper.writeResponseBodyToDisk(emitter, responseBodyResponse, range);
                 } else {
-                    subscriber.onError(new Exception("http response code error,code is " + responseBodyResponse.code()));
+                    emitter.onError(new Exception("http response code error,code is " + responseBodyResponse.code()));
                 }
             }
-        }).subscribeOn(Schedulers.io())
+        }, BackpressureStrategy.LATEST)
+                .subscribeOn(Schedulers.io())
                 .observeOn(Schedulers.io())
-                .onBackpressureLatest();
+                .unsubscribeOn(Schedulers.computation());
     }
 
     private Boolean retry(Integer integer, Throwable throwable) {

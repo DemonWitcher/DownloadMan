@@ -13,7 +13,7 @@ import org.greenrobot.greendao.annotation.Unique;
 import java.util.ArrayList;
 import java.util.List;
 
-import rx.Subscription;
+import io.reactivex.disposables.Disposable;
 
 /**
  * Created by witcher on 2017/2/8 0008.
@@ -31,7 +31,7 @@ public class DownloadMission implements Parcelable,Comparable<DownloadMission> {
     @Transient
     private List<Range> ranges = new ArrayList<>();
     @Transient
-    private Subscription subscription;
+    private Disposable disposable;
 
     public long getProgress() {
         long progress = 0;
@@ -42,17 +42,17 @@ public class DownloadMission implements Parcelable,Comparable<DownloadMission> {
     }
 
     public void pauseAllRange() {
-        if (subscription != null && !subscription.isUnsubscribed()) {
-            subscription.unsubscribe();
+        if (disposable != null&&!disposable.isDisposed()) {
+            disposable.dispose();
         }
     }
 
-    public Subscription getSubscription() {
-        return subscription;
+    public Disposable getDisposable() {
+        return disposable;
     }
 
-    public void setSubscription(Subscription subscription) {
-        this.subscription = subscription;
+    public void setDisposable(Disposable disposable) {
+        this.disposable = disposable;
     }
 
     public Long getId() {

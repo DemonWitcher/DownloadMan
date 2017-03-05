@@ -10,6 +10,7 @@ import android.os.RemoteException;
 import com.witcher.downloadmanlib.entity.Constant;
 import com.witcher.downloadmanlib.entity.DownloadMission;
 import com.witcher.downloadmanlib.entity.IDownloadService;
+import com.witcher.downloadmanlib.util.L;
 
 import java.util.List;
 
@@ -63,9 +64,12 @@ public class DownloadManager {
     }
 
     public List<DownloadMission> getAllMission() throws RemoteException {
-        if (mDownloadService != null)
+        if (mDownloadService != null){
             return mDownloadService.getAllMission();
-        return null;
+        }else{
+            L.i("mDownloadService is NULL");
+            throw new RemoteException();
+        }
     }
 
     public void pauseMission(String url) throws RemoteException {

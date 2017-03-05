@@ -14,14 +14,6 @@ import com.witcher.downloadmanlib.util.Util;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
-
-import rx.Observable;
-import rx.Observer;
-import rx.Subscription;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.functions.Func1;
-import rx.schedulers.Schedulers;
 
 /**
  * Created by witcher on 2017/2/13 0013.
@@ -33,7 +25,7 @@ public class DownloadListActivity extends AppCompatActivity {
     ListView lv;
     DownloadAdapter adapter;
     List<DownloadMission> list;
-    Subscription subscription;
+    Thread thread;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,39 +41,34 @@ public class DownloadListActivity extends AppCompatActivity {
     }
 
     private void startQuery() {
-        subscription = Observable.interval(500, TimeUnit.MILLISECONDS, Schedulers.computation())
-                .map(new Func1<Long, List<DownloadMission>>() {
-                    @Override
-                    public List<DownloadMission> call(Long aLong) {
-                        try {
-                            return mgr.getAllMission();
-                        } catch (RemoteException e) {
-                            e.printStackTrace();
-                            return null;
-                        }
+        thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (!Thread.currentThread().isInterrupted()) {
+                    try {
+                        Thread.sleep(500);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
                     }
-                })
-                .observeOn(AndroidSchedulers.mainThread())
-                .subscribe(new Observer<List<DownloadMission>>() {
-                    @Override
-                    public void onCompleted() {
-
-                    }
-
-                    @Override
-                    public void onError(Throwable e) {
-
-                    }
-
-                    @Override
-                    public void onNext(List<DownloadMission> list) {
-                        if (list != null) {
-                            DownloadListActivity.this.list = list;
+                    try {
+                        List<DownloadMission> list = mgr.getAllMission();
+//                        if(list!=null){
+                            DownloadListActivity.this.list =list;
                             adapter.setData(DownloadListActivity.this.list);
-                            adapter.notifyDataSetChanged();
-                        }
+                            runOnUiThread(new Runnable() {
+                                @Override
+                                public void run() {
+                                    adapter.notifyDataSetChanged();
+                                }
+                            });
+//                        }
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
                     }
-                });
+                }
+            }
+        });
+        thread.start();
     }
 
     private void initView() {
@@ -154,6 +141,6 @@ public class DownloadListActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        subscription.unsubscribe();
+        thread.interrupt();
     }
 }
