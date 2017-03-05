@@ -2,6 +2,7 @@ package com.witcher.downloadmanlib.helper;
 
 
 import io.reactivex.Flowable;
+import io.reactivex.Observable;
 import okhttp3.ResponseBody;
 import retrofit2.Response;
 import retrofit2.http.GET;
@@ -19,5 +20,5 @@ public interface DownloadAPI {
     @GET
     Flowable<Response<ResponseBody>> download(@Header("Range") String range, @Url String url);
     @HEAD
-    Flowable<Response<Void>> getHttpHeader(@Url String url);
+    Observable<Response<Void>> getHttpHeader(@Url String url);
 }

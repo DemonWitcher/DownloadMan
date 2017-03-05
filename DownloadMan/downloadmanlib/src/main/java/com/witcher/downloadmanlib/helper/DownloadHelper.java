@@ -11,8 +11,6 @@ import com.witcher.downloadmanlib.entity.Range;
 import com.witcher.downloadmanlib.util.L;
 import com.witcher.downloadmanlib.util.Util;
 
-import org.reactivestreams.Publisher;
-
 import java.net.ConnectException;
 import java.net.ProtocolException;
 import java.net.SocketException;
@@ -26,6 +24,7 @@ import io.reactivex.Flowable;
 import io.reactivex.FlowableEmitter;
 import io.reactivex.FlowableOnSubscribe;
 import io.reactivex.Observable;
+import io.reactivex.ObservableSource;
 import io.reactivex.annotations.NonNull;
 import io.reactivex.exceptions.CompositeException;
 import io.reactivex.functions.BiPredicate;
@@ -57,46 +56,50 @@ public class DownloadHelper {
         mFileHelper = new FileHelper();
     }
 
-    public Observable<Range> startDownload(final DownloadMission mission) {
-        L.i("startDownload_url:" + mission.getUrl());
-        L.i("startDownload_name:" + mission.getName());
-        mFileHelper.createDownloadDirs();
-        if (mDbManager.haveMission(mission.getUrl()) && mFileHelper.downloadFileExists(mission.getName())) {
-            //这里查出所有range赋给mission
-            mission.setRanges(mDbManager.getRangeByUrl(mission.getUrl()));
-            return launchDownload(mission).toObservable();
-        } else {
-            return mDownloadAPI.getHttpHeader(mission.getUrl())
-                    .subscribeOn(Schedulers.io())
-                    .observeOn(Schedulers.io())
-                    .unsubscribeOn(Schedulers.computation())
-                    .flatMap(new Function<Response<Void>, Publisher<Range>>() {
-                        @Override
-                        public Publisher<Range> apply(@NonNull Response<Void> voidResponse) throws Exception {
-                            mission.setSize(Util.contentLength(voidResponse));
-                            createRange(mission);
+    public Observable<Range> startDownload(DownloadMission m) {
+        L.i("startDownload_url:" + m.getUrl());
+        L.i("startDownload_name:" + m.getName());
+        return Observable.just(m)
+                .flatMap(new Function<DownloadMission, ObservableSource<Range>>() {
+                    @Override
+                    public ObservableSource<Range> apply(final @NonNull DownloadMission mission) throws Exception {
+                        mFileHelper.createDownloadDirs();
+                        if (mDbManager.haveMission(mission.getUrl()) && mFileHelper.downloadFileExists(mission.getName())) {
+                            //这里查出所有range赋给mission
+                            mission.setRanges(mDbManager.getRangeByUrl(mission.getUrl()));
                             return launchDownload(mission);
+                        } else {
+                            return mDownloadAPI.getHttpHeader(mission.getUrl())
+                                    .subscribeOn(Schedulers.io())
+                                    .observeOn(Schedulers.io())
+                                    .flatMap(new Function<Response<Void>, ObservableSource<Range>>() {
+                                        @Override
+                                        public ObservableSource<Range> apply(@NonNull Response<Void> voidResponse) throws Exception {
+                                            mission.setSize(Util.contentLength(voidResponse));
+                                            createRange(mission);
+                                            return launchDownload(mission);
+                                        }
+                                    }).retry(new BiPredicate<Integer, Throwable>() {
+                                        @Override
+                                        public boolean test(@NonNull Integer integer, @NonNull Throwable throwable) throws Exception {
+                                            return retry(integer, throwable);
+                                        }
+                                    });
                         }
-                    }).retry(new BiPredicate<Integer, Throwable>() {
-                        @Override
-                        public boolean test(@NonNull Integer integer, @NonNull Throwable throwable) throws Exception {
-                            return retry(integer, throwable);
-                        }
-                    }).toObservable();
-        }
+                    }
+                });
 
     }
 
-    private Flowable<Range> launchDownload(DownloadMission mission) {
-        List<Publisher<Range>> list = new ArrayList<>(DOWNLOAD_RANGE);
+    private Observable<Range> launchDownload(DownloadMission mission) {
+        List<Flowable<Range>> list = new ArrayList<>(DOWNLOAD_RANGE);
         for (int i = 0; i < DOWNLOAD_RANGE; ++i) {
             Range range = mission.getRanges().get(i);
             if (range.progress < range.size) {
                 list.add(downloadObservable(range));
             }
         }
-        return Flowable.merge(list)
-                .unsubscribeOn(Schedulers.computation());
+        return Flowable.merge(list).toObservable();
     }
 
     private void createRange(DownloadMission mission) {
@@ -123,7 +126,6 @@ public class DownloadHelper {
         return mDownloadAPI.download(strRange, range.getUrl())
                 .subscribeOn(Schedulers.io())
                 .observeOn(Schedulers.io())
-                .unsubscribeOn(Schedulers.computation())
                 .flatMap(new Function<Response<ResponseBody>, Flowable<Range>>() {
                     @Override
                     public Flowable<Range> apply(@NonNull Response<ResponseBody> responseBodyResponse) throws Exception {
@@ -151,7 +153,7 @@ public class DownloadHelper {
         }, BackpressureStrategy.LATEST)
                 .subscribeOn(Schedulers.io())
                 .observeOn(Schedulers.io())
-                .unsubscribeOn(Schedulers.computation());
+                ;
     }
 
     private Boolean retry(Integer integer, Throwable throwable) {

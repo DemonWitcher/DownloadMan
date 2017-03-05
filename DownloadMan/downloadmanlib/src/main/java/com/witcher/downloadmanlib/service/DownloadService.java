@@ -32,7 +32,6 @@ import io.reactivex.Observer;
 import io.reactivex.disposables.Disposable;
 import io.reactivex.functions.Consumer;
 import io.reactivex.plugins.RxJavaPlugins;
-import io.reactivex.schedulers.Schedulers;
 
 import static com.witcher.downloadmanlib.entity.Constant.DownloadMan.MAX_DOWNLOAD_NUMBER;
 
@@ -273,7 +272,7 @@ public class DownloadService extends Service {
         mission.setState(MissionState.CONNECTING);
         mIntDownloadingCount.getAndIncrement();
         mDownloadHelper.startDownload(mission)
-                .unsubscribeOn(Schedulers.computation())
+//                .unsubscribeOn(Schedulers.computation())
                 .subscribe(new Observer<Range>() {
                     @Override
                     public void onSubscribe(Disposable d) {
@@ -286,15 +285,16 @@ public class DownloadService extends Service {
                     @Override
                     public void onNext(Range range) {
                         mDBManager.updateRange(range);
+                        if (range.progress > range.size) {
+                            setMissionError(mission);
+                        }
                     }
 
                     @Override
                     public void onError(Throwable e) {
                         L.i("onError:" + e.getMessage() + ",错误任务:" + mission.getName());
                         L.i(Log.getStackTraceString(e));
-                        mission.setState(MissionState.ERROR);
-                        mIntDownloadingCount.getAndDecrement();
-                        mDBManager.updateMission(mission);
+                        setMissionError(mission);
                         e.printStackTrace();
                     }
 
@@ -307,6 +307,13 @@ public class DownloadService extends Service {
                         checkHaveMissionToStartDownload();
                     }
                 });
+    }
+
+    private void setMissionError(DownloadMission mission) {
+        mission.setState(MissionState.ERROR);
+        mIntDownloadingCount.getAndDecrement();
+        mDBManager.updateMission(mission);
+        mission.pauseAllRange();
     }
 
     private void checkHaveMissionToStartDownload() {

@@ -69,7 +69,7 @@ public class FileHelper {
         }
     }
 
-    public boolean writeResponseBodyToDisk(FlowableEmitter<Range> emitter, Response<ResponseBody> responseBodyResponse, Range range) {
+    public void writeResponseBodyToDisk(FlowableEmitter<Range> emitter, Response<ResponseBody> responseBodyResponse, Range range) {
         L.i("writeResponseBodyToDisk");
         try {
             RandomAccessFile raf = new RandomAccessFile(getDownloadPath() + File.separator + range.getName(), "rws");
@@ -97,21 +97,20 @@ public class FileHelper {
                     emitter.onNext(range);
                 }
                 emitter.onComplete();
-                return true;
-            }
-            catch (Exception e) {
-                e.printStackTrace();
-                throw e;
-            }
-            finally {
+            } catch (Exception e) {
+                if(!emitter.isCancelled()){
+                    emitter.onError(e);
+                }
+            } finally {
                 closeQuietly(raf);
                 closeQuietly(saveChannel);
                 closeQuietly(inputStream);
                 closeQuietly(responseBodyResponse.body());
             }
         } catch (IOException e) {
-            emitter.onError(e);
-            return false;
+            if(!emitter.isCancelled()){
+                emitter.onError(e);
+            }
         }
     }
 
