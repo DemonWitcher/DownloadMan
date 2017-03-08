@@ -22,17 +22,6 @@ public class RetrofitProvider {
     private RetrofitProvider() {
     }
 
-    /**
-     * 指定endpoint
-     */
-    public static Retrofit getInstance(String endpoint) {
-        ENDPOINT = endpoint;
-        return SingletonHolder.INSTANCE;
-    }
-
-    /**
-     * 不指定endPoint
-     */
     public static Retrofit getInstance() {
         return SingletonHolder.INSTANCE;
     }

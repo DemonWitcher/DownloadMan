@@ -27,19 +27,19 @@ public class FileHelper {
 
     private static final int BUFFER_SIZE = 32 * 1024;
 
-    public void createDownloadDirs() {
+    public static void createDownloadDirs() {
         mkdirs(getDownloadPath());
     }
 
-    public String getDownloadPath() {
+    public static String getDownloadPath() {
         return Environment.getExternalStorageDirectory() + File.separator + "downloadman" + File.separator + "download";
     }
 
-    public boolean downloadFileExists(String name) {
+    public static boolean downloadFileExists(String name) {
         return getFile(getDownloadPath() + File.separator + name).exists();
     }
 
-    private File getFile(String path) {
+    private static File getFile(String path) {
         return new File(path);
     }
 
@@ -69,7 +69,7 @@ public class FileHelper {
         }
     }
 
-    public void writeResponseBodyToDisk(FlowableEmitter<Range> emitter, Response<ResponseBody> responseBodyResponse, Range range) {
+    public static void writeResponseBodyToDisk(FlowableEmitter<Range> emitter, Response<ResponseBody> responseBodyResponse, Range range) {
         L.i("writeResponseBodyToDisk");
         try {
             RandomAccessFile raf = new RandomAccessFile(getDownloadPath() + File.separator + range.getName(), "rws");
@@ -114,14 +114,14 @@ public class FileHelper {
         }
     }
 
-    public void deleteAll() {
+    public static void deleteAll() {
         File[] files = new File(getDownloadPath()).listFiles();
         for (File file : files) {
             file.delete();
         }
     }
 
-    public void deleteByName(String name) {
+    public static void deleteByName(String name) {
         File file = new File(getDownloadPath() + File.separator + name);
         if (file.exists()) {
             file.delete();

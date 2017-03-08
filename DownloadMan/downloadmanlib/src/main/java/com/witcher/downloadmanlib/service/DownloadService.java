@@ -22,8 +22,6 @@ import java.net.SocketException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Map;
-import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,12 +56,11 @@ public class DownloadService extends Service {
     }
 
     private final AtomicInteger mIntDownloadingCount = new AtomicInteger();
-    private Queue<DownloadMission> mWaitList;
-    private Map<String, DownloadMission> mIndexMap;
+    private ConcurrentLinkedQueue<DownloadMission> mWaitList;
+    private ConcurrentHashMap<String, DownloadMission> mIndexMap;
 
     private DownloadHelper mDownloadHelper;
     private DBManager mDBManager;
-    private FileHelper mFileHelper;
 //    private Looper mLooper;
 
     @Nullable
@@ -71,7 +68,6 @@ public class DownloadService extends Service {
     public IBinder onBind(Intent intent) {
         mDownloadHelper = new DownloadHelper(this);
         mDBManager = DBManager.getSingleton(this);
-        mFileHelper = new FileHelper();
         mWaitList = new ConcurrentLinkedQueue<>();
         mIndexMap = new ConcurrentHashMap<>();
 
@@ -199,7 +195,7 @@ public class DownloadService extends Service {
             default: {
             }
         }
-        mFileHelper.deleteByName(mission.getName());
+        FileHelper.deleteByName(mission.getName());
         mDBManager.deleteMission(url);
     }
 
@@ -245,7 +241,7 @@ public class DownloadService extends Service {
 
     private void cancelAll() {
         mDBManager.deleteAll();
-        mFileHelper.deleteAll();
+        FileHelper.deleteAll();
         mIntDownloadingCount.set(0);
         mWaitList.clear();
         mIndexMap.clear();

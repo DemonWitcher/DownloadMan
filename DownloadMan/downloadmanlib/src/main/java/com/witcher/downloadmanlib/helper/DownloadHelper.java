@@ -46,14 +46,12 @@ public class DownloadHelper {
 
     private DownloadAPI mDownloadAPI;
     private DBManager mDbManager;
-    private FileHelper mFileHelper;
     private Context mContext;
 
     public DownloadHelper(Context context) {
         this.mContext = context;
         mDbManager = DBManager.getSingleton(mContext);
         mDownloadAPI = RetrofitProvider.getInstance().create(DownloadAPI.class);
-        mFileHelper = new FileHelper();
     }
 
     public Observable<Range> startDownload(DownloadMission m) {
@@ -63,8 +61,8 @@ public class DownloadHelper {
                 .flatMap(new Function<DownloadMission, ObservableSource<Range>>() {
                     @Override
                     public ObservableSource<Range> apply(final @NonNull DownloadMission mission) throws Exception {
-                        mFileHelper.createDownloadDirs();
-                        if (mDbManager.haveMission(mission.getUrl()) && mFileHelper.downloadFileExists(mission.getName())) {
+                        FileHelper.createDownloadDirs();
+                        if (mDbManager.haveMission(mission.getUrl()) && FileHelper.downloadFileExists(mission.getName())) {
                             //这里查出所有range赋给mission
                             mission.setRanges(mDbManager.getRangeByUrl(mission.getUrl()));
                             return launchDownload(mission);
@@ -145,7 +143,7 @@ public class DownloadHelper {
             @Override
             public void subscribe(FlowableEmitter<Range> emitter) throws Exception {
                 if (responseBodyResponse.code() == 200 || responseBodyResponse.code() == 206) {
-                    mFileHelper.writeResponseBodyToDisk(emitter, responseBodyResponse, range);
+                    FileHelper.writeResponseBodyToDisk(emitter, responseBodyResponse, range);
                 } else {
                     emitter.onError(new Exception("http response code error,code is " + responseBodyResponse.code()));
                 }
@@ -156,7 +154,7 @@ public class DownloadHelper {
                 ;
     }
 
-    private Boolean retry(Integer integer, Throwable throwable) {
+    private static Boolean retry(Integer integer, Throwable throwable) {
         if (throwable instanceof ProtocolException) {
             if (integer < RETRY_COUNT + 1) {
                 Log.w(TAG, Thread.currentThread().getName() +
